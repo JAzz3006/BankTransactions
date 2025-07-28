@@ -35,16 +35,37 @@ public class Bank {
      * усмотрение)
      */
     public void transfer(String fromAccountNum, String toAccountNum, long amount) {
-        long moneyBeforeFrom = accounts.get(fromAccountNum).getMoney();
-        long moneyBeforeTo = accounts.get(toAccountNum).getMoney();
-        System.out.println("Баланс счета " + fromAccountNum + " = " + FORMATTER.format(getBalance(fromAccountNum)));
-        accounts.replace(fromAccountNum, new Account(fromAccountNum, moneyBeforeFrom - amount));
-        System.out.println("Сумма " + FORMATTER.format(amount) + " списана со счета " + fromAccountNum);
-        System.out.println("Баланс счета " + fromAccountNum + " = " + FORMATTER.format(getBalance(fromAccountNum)));
-        System.out.println("Баланс счета " + toAccountNum + " = " + FORMATTER.format(getBalance(toAccountNum)));
-        accounts.replace(toAccountNum, new Account(toAccountNum, moneyBeforeTo + amount));
-        System.out.println("Сумма " + FORMATTER.format(amount) + " зачислена на счет " + toAccountNum);
-        System.out.println("Баланс счета " + toAccountNum + " = " + FORMATTER.format(getBalance(toAccountNum)));
+        if (fromAccountNum.equals(toAccountNum)) return;
+        Account from = accounts.get(fromAccountNum);
+        Account to = accounts.get(toAccountNum);
+
+        Account firstLock = fromAccountNum.compareTo(toAccountNum) < 0 ? from : to;
+        Account secondLock = fromAccountNum.compareTo(toAccountNum) < 0 ? to : from;
+
+        synchronized (firstLock){
+            synchronized (secondLock){
+                StringBuilder builder = new StringBuilder();
+                long fromInitBalance = from.getMoney();
+                long toInitBalance = to.getMoney();
+                if (fromInitBalance < amount) return;
+
+                from.withdraw(amount);
+                to.deposit(amount);
+
+                builder
+                        .append("Со счета ").append(fromAccountNum)
+                        .append(" (входящий баланс ").append(FORMATTER.format(fromInitBalance)).append(") ")
+                        .append(" на счет ").append(toAccountNum)
+                        .append(" (входящий баланс ").append(FORMATTER.format(toInitBalance)).append(") ")
+                        .append(" переведена сумма ").append(FORMATTER.format(amount))
+                        .append("\nБаланс счета ").append(fromAccountNum).append(" -> ").append(FORMATTER.format(from.getMoney()))
+                        .append("\nБаланс счета ").append(toAccountNum).append(" -> ").append(FORMATTER.format(to.getMoney()))
+                        .append("\n_________")
+                ;
+                System.out.println(builder);
+            }
+        }
+
     }
     public void transferBuilder(){
         String[] rndAccounts = getTwoDifferentAccNumber();
