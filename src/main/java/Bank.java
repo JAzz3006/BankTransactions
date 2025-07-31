@@ -4,6 +4,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Bank {
     public final int clientsCount;
@@ -16,7 +17,6 @@ public class Bank {
 
     private Map<String, Account> accounts;
     private List<String> accNumbers;
-    private List<String> blockedAccNumbers = Collections.synchronizedList(new ArrayList<>());
     private final Random random = new Random();
 
     public Bank(int clientsCount) {
@@ -39,22 +39,24 @@ public class Bank {
      */
     public void transfer(String fromAccountNum, String toAccountNum, long amount) {
         if (fromAccountNum.equals(toAccountNum)) return;
-        boolean isFraud = false;
+        boolean fraud = false;
         if (amount > FRAUD_CHECK_THRESH){
             try{
-                isFraud = isFraud(fromAccountNum, toAccountNum, amount);
+                fraud = isFraud(fromAccountNum, toAccountNum, amount);
             } catch (InterruptedException e) {
                 System.out.println("Что-то пошло не так во время проверки транзакции" + e.getMessage());
-                e.printStackTrace();            }
+                e.printStackTrace();
+            }
         }
 
-        if (!isFraud){
+        if (!fraud){
         Account from = accounts.get(fromAccountNum);
         Account to = accounts.get(toAccountNum);
         Account firstLock = fromAccountNum.compareTo(toAccountNum) < 0 ? from : to;
         Account secondLock = fromAccountNum.compareTo(toAccountNum) < 0 ? to : from;
         synchronized (firstLock){
             synchronized (secondLock){
+                if (from.isBlocked() || to.isBlocked()) return;
                 StringBuilder builder = new StringBuilder();
                 long fromInitBalance = from.getMoney();
                 long toInitBalance = to.getMoney();
@@ -89,7 +91,7 @@ public class Bank {
 
     public void multiTransferSimulator(int threadsCount, int transfersCount){
         ExecutorService executor = Executors.newFixedThreadPool(threadsCount);
-        for (int i = 0; i < transfersCount; i++) {
+        for (int i = 0; i <= transfersCount; i++) {
             executor.submit(() -> {
                 try {
                     synchronized (accNumbers){
@@ -127,13 +129,11 @@ public class Bank {
     }
 
     public void blockAccounts(String fromAccountNum, String toAccountNum){
+        accounts.get(fromAccountNum).block();
+        accounts.get(toAccountNum).block();
         synchronized (accNumbers){
             accNumbers.remove(fromAccountNum);
             accNumbers.remove(toAccountNum);
-        }
-        synchronized (blockedAccNumbers){
-            blockedAccNumbers.add(fromAccountNum);
-            blockedAccNumbers.add(toAccountNum);
         }
         System.out.printf("‼️ Счета %s и %s заблокированы из-за подозрительной активности\n_________\n",
                 fromAccountNum, toAccountNum);
@@ -180,22 +180,20 @@ public class Bank {
                 System.out.println("Все счета заблокированы");
                 return;
             }
-            System.out.println("Активные счета:\n");
+            System.out.println("Активные счета:");
             accNumbers.stream()
-                    .map(elm -> accNumbers.indexOf(elm) + " -> " + elm)
+                    .map(elm -> accNumbers.indexOf(elm) + 1  + " -> " + elm)
                     .forEach(System.out::println);
         }
     }
 
     public void getBlockedList(){
-        System.out.println("\n");
-        synchronized (blockedAccNumbers){
-            if (blockedAccNumbers.isEmpty()){
-                System.out.println("Ни один счет не заблокирован");
-            }
-            blockedAccNumbers.stream()
-                    .map(elm -> blockedAccNumbers.indexOf(elm) + " - blocked -> " + elm)
-                    .forEach(System.out::println);
-        }
+        System.out.println("Заблокированные счета:");
+        AtomicInteger count = new AtomicInteger(0);
+        accounts.entrySet().stream()
+                .filter(entry -> entry.getValue().isBlocked())
+                .map(Map.Entry::getKey)
+                .forEach(str -> System.out.println(count.incrementAndGet() + " - blocked -> " + str));
+
     }
 }
